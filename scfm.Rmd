@@ -32,7 +32,7 @@ library(SpaDES)
 ## Usage example
 
 ```{r module usage example, eval = FALSE}
-cloudFolderID <- "https://drive.google.com/open?id=1PoEkOkg_ixnAdDqqTQcun77nUvkEHDc0"
+
 
 #Parameters
 timeunit <- "year"
@@ -99,10 +99,13 @@ paths <- list(
 #if you supply studyArea you should supply rtm to make sure the crs are identical. 
 
 #if run with no studyArea, the default is a small area in southwest Alberta
+tempStudyArea <- LandR::randomStudyArea(size = 10000 * 6.25* 2500) #hectares * ha/pixel * pixels in landscape
+rtm <- LandR::prepInputsLCC(studyArea = tempStudyArea, destinationPath = tempdir(), filename2 = NULL)
+tempStudyArea <- spTransform(tempStudyArea, CRSobj = crs(rtm))
+#study area and rasterToMatch need same crs
 objects <- list(
-  "cloudFolderID" = cloudFolderID
-  # studyArea = tempStudyArea,
-  # rasterToMatch = rtm
+  studyArea = tempStudyArea,
+  rasterToMatch = rtm
   )
 
 #Run module
