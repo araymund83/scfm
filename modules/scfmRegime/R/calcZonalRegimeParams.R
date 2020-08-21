@@ -13,15 +13,17 @@ calcZonalRegimePars <- function(polygonID, firePolys = firePolys,
   rate <- nFires / (epochLength * landAttr$burnyArea)   # fires per ha per yr
 
   pEscape <- 0
-  xBar <- 0
+  xBar <- 0 # mean fire size
   xMax <- 0
   lxBar <- NA
   maxFireSize <- cellSize   #note that maxFireSize has unit of ha NOT cells!!!
   xVec <- numeric(0)
+  xFireSize <- 0 
 
   if (nFires > 0) {
     #calculate escaped fires
     #careful to subtract cellSize where appropriate
+    xFireSize <- tmpA$SIZE_HA[tmpA$SIZE_HA > cellSize]
     xVec <- tmpA$SIZE_HA[tmpA$SIZE_HA > cellSize]
 
     if (length(xVec) > 0) {
@@ -29,7 +31,7 @@ calcZonalRegimePars <- function(polygonID, firePolys = firePolys,
       xBar <- mean(xVec)
       lxBar <- mean(log(xVec))
       xMax <- max(xVec)
-
+      xFireSize <- mean(xFireSize)
       zVec <- log(xVec / cellSize)
       if (length(zVec) < 30)
         warning(paste("Less than 30 \"large\" fires in zone", polygonID, ".",
@@ -70,6 +72,14 @@ calcZonalRegimePars <- function(polygonID, firePolys = firePolys,
     warning("this can't happen")
     maxFireSize = cellSize
   }
+  
+  burnRate <- (nFires * xFireSize) / (epochLength * landAttr$burnyArea) 
+  
+  if  (!is.na(P(sim)$targetBurnRate)){
+   ratio <- P(sim)$targetBurnRate / burnyArea
+   xFireSize <- xFireSize * ratio
+  }
+  
   return(list(ignitionRate = rate,
               pEscape = pEscape,
               xBar = xBar,
@@ -77,6 +87,8 @@ calcZonalRegimePars <- function(polygonID, firePolys = firePolys,
               lxBar = lxBar,
               #mean log(fire size)
               xMax = xMax,
+              xFireSize = xFireSize,
+              burnRate = burnRate,
               #maximum observed size
               emfs_ha = maxFireSize  #Estimated Maximum Fire Size in ha
   )

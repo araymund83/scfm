@@ -185,7 +185,7 @@ calibrateFireRegimePolys <- function(polygonType, regime,
               userTags = c('scfmDriver', "executeDesign", polygonType),
               omitArgs = c("indices"))
 
-  calibModel <- scam::scam(finalSize ~ s(p, bs = "micx", k = 20), data = cD)
+  calibModel <- scam::scam(finalSize ~ s(p, bs = "micx", k = 50), data = cD)
 
   xBar <- regime$xBar / cellSize
 
