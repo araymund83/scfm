@@ -148,8 +148,94 @@ Init <- function(sim) {
                               calibrateFireRegimePolys,
                               userTags = c("scfmDriver", "scfmDriverPars"))
 
-  names(sim$scfmDriverPars) <- names(sim$scfmRegimePars) #replicate the polygon labels
+      #Need a vector of igniteable cells
+      #Item 1 = L, the flammable Map
+      #Item 2 = B (aka the landscape Index) this denotes buffer
+      #Item 3 = igLoc(index of igniteable cells) L[igloc] == 1 &&(B[igLoc]) == 1 (ie within core)
+      index <- 1:ncell(calibLand$flammableMap)
+      index[calibLand$flammableMap[] != 1 | is.na(calibLand$flammableMap[])] <- NA
+      index[calibLand$landscapeIndex[] != 1 | is.na(calibLand$landscapeIndex[])] <- NA
+      index <- index[!is.na(index)]
+      if (length(index) == 0)
+        stop("polygon has no flammable cells!")
 
+      dT <- makeDesign(indices = index, targetN = targetN,
+                       pmin = pMin, pmax = pMax,
+                       pEscape = ifelse(regime$pEscape == 0, 0.1, regime$pEscape))
+
+      message(paste0("calibrating for polygon ", polygonType, " (Time: ", Sys.time(), ")"))
+      calibData <- executeDesign(L = calibLand$flammableMap,
+                                 dT,
+                                 maxCells = maxBurnCells)
+
+      cD <- calibData[calibData$finalSize > 1,]  #could use [] notation, of course.
+
+      calibModel <- scam::scam(finalSize ~ s(p, bs = "micx", k = 20), data = cD)
+
+      xBar <- regime$xBar / cellSize
+
+      if (xBar > 0) {
+        #now for the inverse step.
+        Res <- try(stats::uniroot(f <- function(x, cM, xBar) {predict(cM, list("p" = x)) - xBar},
+                                  calibModel, xBar, # "..."
+                                  interval = c(min(cD$p), max(cD$p)),
+                                  extendInt = "no",
+                                  tol = 0.00001
+        ), silent = TRUE)
+        if (class(Res) == "try-error") {
+          #TODO: should pick the closest value (of min and max) if error is value not of opposite sign
+          pJmp <- min(cD$p)
+          message("the loess model may underestimate the spread probability for polygon ", polygonType)
+        } else {
+          pJmp <- Res$root
+        }
+      } else {
+        #pJmp <- P(sim)$pJmp # don't need this because it is an argument to this function alraedy
+        calibModel <- "No Model"
+        Res <- "No Uniroot result"
+      }
+      #check convergence, and out of bounds errors etc
+      w <- landAttr$nNbrs
+      w <- w / sum(w)
+      hatPE <- regime$pEscape
+      if (hatPE == 0) {
+        # no fires in polygon zone escapted
+        p0 <- 0
+      } else if (hatPE == 1) {
+        # all fires in polygon zone escaped
+        p0 <- 1
+      } else {
+        res <- optimise(escapeProbDelta,
+                        interval = c(hatP0(hatPE, neighbours),
+                                     hatP0(hatPE, floor(sum(w * 0:8)))),
+                        tol = 1e-4,
+                        w = w,
+                        hatPE = hatPE)
+        p0 <- res[["minimum"]]
+        #It is almost obvious that the true minimum must occurr within the interval specified in the
+        #call to optimise, but I have not proved it, nor am I certain that the function being minimised is
+        #monotone.
+      }
+      #don't forget to scale by number of years, as well, if your timestep is ever != 1yr
+      rate <- regime$ignitionRate * cellSize #fireRegimeModel and this module must agree on
+      #an annual time step. How to test / enforce?
+      pIgnition <- rate #approximate Poisson arrivals as a Bernoulli process at cell level.
+      #for Poisson rate << 1, the expected values are the same, partially accounting
+      #for multiple arrivals within years. Formerly, I used a poorer approximation
+      #where 1-p = P[x==0 | lambda=rate] (Armstrong and Cumming 2003).
+
+      return(list(pSpread = pJmp,
+                  p0 = p0,
+                  naiveP0 = hatP0(regime$pEscape, 8),
+                  pIgnition = pIgnition,
+                  maxBurnCells = maxBurnCells,
+                  calibModel = calibModel,
+                  uniroot.Res = Res
+      )
+      )
+    })
+
+  names(sim$scfmDriverPars) <- names(sim$scfmRegimePars) #replicate the polygon labels
   return(invisible(sim))
 }
 
